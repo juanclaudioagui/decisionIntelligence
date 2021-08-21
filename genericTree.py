@@ -52,7 +52,7 @@ import queue
 import random
 
 
-verbose = False
+verbose = True
 Right = True
 Left  = False 
 thePuzzle = None
@@ -377,8 +377,9 @@ class Move:
         elif PNAME == 'FAM':
             # Disfunctional family moves rule ------------------------------------------
             # there is one rule for the move
-            rule1 = sum(filter( lambda i: i !=None , moveData))  in [1,2]           # The ferry can carry no more than 2 people.
-            return rule1
+            rule1 = sum(filter( lambda i: i !=None , moveData))  in [1,2]                                     # The ferry can carry no more than 2 people.
+            rule2 = sum(filter( lambda i: i !=None , [moveData[dad],moveData[mom],moveData[help]])) in [1,2]  # the Ferry must be operated by an adult
+            return (rule1 and rule2)
 
         elif PNAME == 'BASIC':
             # Wolf Goat, Cabbage  Moves ----------------------------------------------------
