@@ -3,7 +3,7 @@
 # do not trasverse the tree.... then
 # example selector
 
-PNAME = ['JH','FAM','BASIC'][0]
+PNAME = ['JH','FAM','BASIC','RIDDLE'][1]
 
 print ("Solving Puzzle named ",PNAME, "using full Graph expansion and shortest Path")
 
@@ -40,6 +40,18 @@ print ("Solving Puzzle named ",PNAME, "using full Graph expansion and shortest P
 # if left alone the Goat will eat the cabbage
 ################################################################################
 
+################################################################################
+# a differnent one.... RIDDLE
+################################################################################
+# In a word of riddles called Briddles, 9 numbers from 1 - 9 want to reach to the
+# other side of the river. Since its a world of riddles, therefore, there are some
+# rules:
+#
+# Rule-1: Maximum 3 numbers can cross at a time.
+# Rule-2: River cannot sail on its own.
+# Rule-3: The sum of numbers crossing at a time must be a square number.
+################################################################################
+
 # import and global variables
 
 import itertools
@@ -49,9 +61,9 @@ import networkx as nx
 import matplotlib.pyplot as plt
 import queue
 import random
+import math
 import pickle
 import pygraphviz as pg
-
 
 
 
@@ -100,6 +112,13 @@ elif PNAME == 'FAM':                           # Disfunc Family
     pet       = 7
     Gfname    = 'FAMGraphViz.pdf'
 
+elif PNAME == 'RIDDLE':                         # Riddle Game
+    vizString = ['1','2','3','4','5','6','7','8','9','B']
+    crewSize  = 9
+    target    = 9
+    weight    = [1,1,1,1,1,1,1,1,1]
+    Gfname    = 'RIDDLE.pdf'
+
 else :
     raise exception("Puzzle "+PNAME+" Not implemented")
 
@@ -121,7 +140,7 @@ class Puzzle:
         self.endStateColl = []
         self.solPath   = []
         self.paths = []
-        self.shortestPath = None
+        self.shortestPath = []
         self.puzzleIsSolved = False
         self.statesQueue = queue.Queue()                        # a FIFO queue to enable breath first
    
@@ -204,27 +223,32 @@ class Puzzle:
         # look for nodes matching target state
 
         # Compute shortest Path
-        self.shortestPath = nx.shortest_path(self.graph, source=rootNode.short(), target=endNode.short(), weight=None, method='dijkstra')
-        
-        print ( "shortest path in Graph, length =", len(self.shortestPath))
-        for i,aN  in zip(range(len(self.shortestPath)),self.shortestPath): print (self.shortestPath[i])
-        #  compute all  
-        self.paths.append([p for p in nx.all_simple_paths(self.graph, source=rootNode.short(), target=endNode.short())])
-
-        paths = self.paths[0]
-
-        print ("overall ", len(paths), "found from root to target")
-        maxpaths = min (5,len(paths))
-        for i, p in zip(range(maxpaths),paths[:maxpaths]):   
-            print ( i, "length =", len(p))
-            for iNode, node in zip(range(len(p)),p):
-                print ("Node: ", iNode, node)
-
-# dump detail of alternate paths to a file
-        with open('pathsFile', 'wb') as  pathFile :
-             pickle.dump(paths, pathFile)
-             pathFile.close()
+        for p in  nx.all_shortest_paths(self.graph, source=rootNode.short(), target=endNode.short(), weight=None, method='dijkstra'):
+            self.shortestPath.append(p)
             
+        print ( "There are ",len(self.shortestPath), " shortest paths in Graph, of length", len(self.shortestPath[0]))
+        for i,aN  in zip(range(len(self.shortestPath[0])),self.shortestPath[0]): print (self.shortestPath[0][i])
+
+        #  compute all  limit to
+        ip = 0
+        maxPaths = 100
+        self.paths = []
+        for p in nx.all_simple_paths(self.graph, source=rootNode.short(), target=endNode.short()):
+            self.paths.append(p)
+            ip += 1
+            if (ip % 5000) == 0 : print (ip)
+            if ip > maxPaths :
+                break
+        print ("found ", ip, "paths in Graph", PNAME)
+        
+        paths = self.paths
+        pLengths = [ len(p) for p in paths]
+        print ( "Min Lenght path = ",min(pLengths), "Max = ",max(pLengths))
+        for iL in range(min (pLengths), max(pLengths)+1):
+            count = sum(filter( lambda i: i == iL , pLengths))/iL
+            if count != 0:  print ("o/w there are ", count, "paths of Length",iL)
+        
+          
         return
 
 
@@ -235,7 +259,7 @@ class Puzzle:
         
         nodesDataList = State.allValidStatesData()
 
-        if verbose: print ( "Adding", len(nodesDataList), "node")
+        print ( "Adding", len(nodesDataList), "node")
         # add nodes to the graph
         for d in nodesDataList:
             state = State(d)
@@ -256,6 +280,36 @@ class Puzzle:
 
         return
 
+#- Puzzle analyze and plot shortest paths --------------------------
+    def plotPaths(self, rootNode, endNode, paths,fname):
+        id       = lambda state: state.short()
+        nodeByID = lambda id: self.statesDict[id]
+        A = pg.AGraph(directed=True, strict=True)
+
+        i = 0 
+        for p in paths:
+            i += 1
+            if (i % 1000)  == 0: print ("plotting path", i)
+            for i, inode in zip(range(len(p)-1), p[:-1]):
+
+                parentNode = nodeByID(inode)
+                childNode  = nodeByID(p[i+1])
+                move = parentNode.moveToEndState(childNode)
+                A.add_edge(inode, p[i+1], label= move.printString())
+
+        # root and end Nodes
+        A.get_node(id(rootNode)).attr["style"] = "filled"
+        A.get_node(id(rootNode)).attr["fillcolor"] = "green"
+        
+        A.get_node(id(endNode)).attr["style"] = "filled"
+        A.get_node(id(endNode)).attr["fillcolor"] = "red"
+
+        A.layout(prog='dot')
+        A.draw(fname)
+
+        return
+
+
 #-Puzzle-Plot Graph---------------------------------------
     def plot(self, rootNode=None, endNode=None):
     #  plots the entire tree, using pygraphviz, using format
@@ -266,7 +320,7 @@ class Puzzle:
         aPlot = nx.nx_agraph.to_agraph(self.graph)
         
         # Highlight the shortest path
-        sp = Puzzle.thePuzzle.shortestPath
+        sp = Puzzle.thePuzzle.shortestPath[0]
         for i, nodeId in zip(range(len(sp)-1),sp[:-1]):
             fillcolor ="yellow"
             aPlot.get_node(nodeId).attr["style"] = "filled"
@@ -280,6 +334,25 @@ class Puzzle:
             move = parentNode.moveToEndState(childNode)
             edge.attr["label"] = move.printString()
 
+            print (i,nodeId,parentNode.metric(), move.printString())
+
+# print one path...
+        path = Puzzle.thePuzzle.paths[0]  
+        for i, nodeId in zip(range(len(path)-1),path[:-1]):
+            fillcolor ="blue"
+            aPlot.get_node(nodeId).attr["style"] = "filled"
+            aPlot.get_node(nodeId).attr["fillcolor"]= fillcolor
+
+            edge = aPlot.get_edge(nodeId, path[i+1])
+            edge.attr["style"] = "bold"
+            edge.attr["color"] = "red"
+            parentNode = nodeByID(nodeId)
+            childNode  = nodeByID(path[i+1])
+            move = parentNode.moveToEndState(childNode)
+            edge.attr["label"] = move.printString()
+
+            print (i,nodeId, parentNode.metric(), move.printString())
+
         # root and end Nodes
         aPlot.get_node(id(rootNode)).attr["style"] = "filled"
         aPlot.get_node(id(rootNode)).attr["fillcolor"] = "green"
@@ -287,51 +360,11 @@ class Puzzle:
         aPlot.get_node(id(endNode)).attr["style"] = "filled"
         aPlot.get_node(id(endNode)).attr["fillcolor"] = "red"
 
-        
+        print ("plotting file ")
         aPlot.layout(prog="neato")
-        aPlot.draw(Gfname)
-        
+        aPlot.draw(Gfname)        
         return
 
-# Puzzle ------------------------------------------------------------------------
-    def plotAllPaths(self):
-        p = self.paths[0]
-
-        index = 0
-        def myfunc (l):
-            if index > (len(l) -1):
-                return ''
-            else:
-                return l[index]
-            
-        maxlength = max ([ len(ip) for ip in p ])
-        
-        for index in range(maxlength):
-            p.sort( key=myfunc) 
-
-        # plot it now
-
-        A = pg.AGraph(directed=True, strict=True)
-        
-        A.add_node(p[0][0], label='')
-        for iNode  in range(1:len(p[0])
-            A.add_edge(p[0][iNode-1], p[0][iNode
-        
-A.add_node("b")
-A.add_node("c")
-
-
-A.add_edge("A", "b")
-A.add_edge("b", "c")
-A.add_edge("c", "A")
-
-
-b=A.get_node("A")
-b.attr['style'] = "filled"
-b.attr['fillcolor'] = "red"
-
-A.layout(prog='dot')
-A.draw("file2.pdf")
 #-Puzzle----------------------------------------
     def testCompletion(self, state):
         # this is the time to verify completion of the Puzzle        
@@ -414,24 +447,39 @@ class Move:
         # this must be rewritten for each case.....
         # it must apply the specific games rule
 
+        is_square = lambda i : i == math.isqrt(i) ** 2
+        
         if PNAME == 'JH':
             #Jeallous Husband Move rules------------------------------------------------    
             # there is one rule for the move
             rule1 = sum(filter( lambda i: i !=None , moveData))  in [1,2]           # rule 1: The ferry can carry no more than 2 people.
             return rule1
-        
+
         elif PNAME == 'FAM':
             # Disfunctional family moves rule ------------------------------------------
             # there is one rule for the move
-            rule1 = sum(filter( lambda i: i !=None , moveData))  in [1,2]           # The ferry can carry no more than 2 people.
-            return rule1
-
+            rule1 = sum(filter( lambda i: i !=None , moveData))  in [1,2]                                     # The ferry can carry no more than 2 people.
+            rule2 = sum(filter( lambda i: i !=None , [moveData[dad],moveData[mom],moveData[help]])) in [1,2]  # the Ferry must be operated by an adult
+            return (rule1 and rule2)
+            
         elif PNAME == 'BASIC':
             # Wolf Goat, Cabbage  Moves ----------------------------------------------------
             # the rules are that the 
             # rule 1: The move includes the farmer and only one other item....
             rule1 =  moveData[farmer] == True                                       # Farmer is on boat
             rule2 =  sum(filter( lambda i: i !=None , moveData[1:])) <= 1           # only one other item in boat
+            return (rule1 and rule2)
+
+        elif PNAME == 'RIDDLE':
+            # 
+            #Rule-1: Maximum 3 numbers can cross at a time.
+            #Rule-2: River cannot sail on its own.
+            #Rule-3: The sum of numbers crossing at a time must be a square number.
+            rule1 =  sum(filter( lambda i: i !=None , moveData)) in [1,2,3]     # from one to three max travellers
+            val = 0
+            for iCrew in range(crewSize):
+                if moveData[iCrew] != None: val += (iCrew + 1)
+            rule2 = is_square(val)
             return (rule1 and rule2)
 
         else:
@@ -478,6 +526,7 @@ class State:
         allMovesData = [list(d)  for d in filter(lambda d: State.isValidStateData(d), \
                                           itertools.product(*opts))]
 
+        print ("full valid set of states is ", len(allMovesData))
         return allMovesData
         
 #-----------------------------------------------               
@@ -563,6 +612,7 @@ class State:
             childrenList =  sorted(self.children(), key = (lambda _: random.random()))
         elif sortingMethod == 'metricReversed':
             childrenList =  sorted(self.children(), key = (lambda c: c.metric()), reverse = False)          
+
         else :
             childrenList = self.children()
 
@@ -689,6 +739,10 @@ class State:
             rule2 = not ((d[cabbage] == d[goat]) and d[cabbage] != d[farmer])
             return (rule1 and rule2)
 
+        # norules here
+        elif PNAME == 'RIDDLE': 
+            return True
+        
         else:
             raise exception("Puzzle "+PNAME+" Not implemented")            
 
@@ -712,22 +766,23 @@ class State:
 #     print('Time = ',t1-t0, ' Nodes = ', len(thePuzzle.statesDict.values()))
 
 t0 = time.perf_counter()
-ThePuzzle = Puzzle.newPuzzle(rootState=None)
-Puzzle.thePuzzle.buildGraph()
+
+# build the graph
+thePuzzle = Puzzle.newPuzzle(rootState=None)
+thePuzzle.buildGraph()
+
+# Analyze the graph
 rootNode = State([Left]*(crewSize +1))
 endNode  = State([Right]*(crewSize +1))
-G = Puzzle.thePuzzle.graph
 Puzzle.thePuzzle.analyzeGraph(rootNode, endNode)
 t1 = time.perf_counter()
 print ("Graph build and analyzed for solution in ",t1-t0,'secs')
-Puzzle.thePuzzle.plot(rootNode, endNode)
 
+# plot the grapch
+thePuzzle.plot(rootNode, endNode)
+thePuzzle.plotPaths(rootNode, endNode, thePuzzle.shortestPath,"spPaths.pdf")
+thePuzzle.plotPaths(rootNode, endNode, thePuzzle.paths,"1Kpaths.pdf")
 # lets make sure all paths are different
-paths = Puzzle.thePuzzle.paths[0]
-lengths = [ len(p) for p in paths ]
-print ( "# of pahts = ", len(paths), "min = ", min(lengths), "Max = ", max(lengths))
-for ip in range(min(lengths), max(lengths)+1):
-    print ( "Length: ", ip, "# paths = ", lengths.count(ip))
 
  
  
